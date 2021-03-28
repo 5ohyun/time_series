@@ -55,7 +55,6 @@ from sklearn.metrics import mean_squared_log_error, mean_squared_error,  r2_scor
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 
-
 ### Feature engineering of default
 def non_feature_engineering(raw):
     if 'datetime' in raw.columns:
@@ -141,34 +140,6 @@ def feature_engineering(raw):
 # raw_fe = feature_engineering(raw_all)
 
 
-### duplicate previous year values to next one
-def feature_engineering_year_duplicated(raw, target):
-    raw_fe = raw.copy()
-    for col in target:
-        raw_fe.loc['2012-01-01':'2012-02-28', col] = raw.loc['2011-01-01':'2011-02-28', col].values
-        raw_fe.loc['2012-03-01':'2012-12-31', col] = raw.loc['2011-03-01':'2011-12-31', col].values
-        step = (raw.loc['2011-03-01 00:00:00', col] - raw.loc['2011-02-28 23:00:00', col])/25
-        step_value = np.arange(raw.loc['2011-02-28 23:00:00', col]+step, raw.loc['2011-03-01 00:00:00', col], step)
-        step_value = step_value[:24]
-        raw_fe.loc['2012-02-29', col] = step_value
-    return raw_fe
-# target = ['count_trend', 'count_seasonal', 'count_Day', 'count_Week', 'count_diff']
-# raw_fe = feature_engineering_year_duplicated(raw_fe, target)
-
-
-### modify lagged values of X_test
-def feature_engineering_lag_modified(Y_test, X_test, target):
-    X_test_lm = X_test.copy()
-    for col in target:
-        X_test_lm[col] = Y_test.shift(1).values
-        X_test_lm[col].fillna(method='bfill', inplace=True)
-        X_test_lm[col] = Y_test.shift(2).values
-        X_test_lm[col].fillna(method='bfill', inplace=True)
-    return X_test_lm
-# target = ['count_lag1', 'count_lag2']
-# X_test_fe = feature_engineering_lag_modified(Y_test_fe, X_test_fe, target)
-
-
 ### Data split of cross sectional
 def datasplit_cs(raw, Y_colname, X_colname, test_size, random_seed=123):
     X_train, X_test, Y_train, Y_test = train_test_split(raw[X_colname], raw[Y_colname], test_size=test_size, random_state=random_seed)
@@ -191,34 +162,6 @@ def datasplit_ts(raw, Y_colname, X_colname, criteria):
     print('X_test:', X_test.shape, 'Y_test:', Y_test.shape)
     return X_train, X_test, Y_train, Y_test
 # X_train, X_test, Y_train, Y_test = datasplit_ts(raw_fe, Y_colname, X_colname, '2012-07-01')
-
-
-### scaling of X_train and X_test by X_train_scaler
-def feature_engineering_scaling(scaler, X_train, X_test):
-    # preprocessing.MinMaxScaler()
-    # preprocessing.StandardScaler()
-    # preprocessing.RobustScaler()
-    # preprocessing.Normalizer()
-    scaler = scaler
-    scaler_fit = scaler.fit(X_train)
-    X_train_scaling = pd.DataFrame(scaler_fit.transform(X_train), 
-                               index=X_train.index, columns=X_train.columns)
-    X_test_scaling = pd.DataFrame(scaler_fit.transform(X_test), 
-                               index=X_test.index, columns=X_test.columns)
-    return X_train_scaling, X_test_scaling
-# X_train_feRS, X_test_feRS = feature_engineering_scaling(preprocessing.Normalizer(), X_train_feR, X_test_feR)
-
-
-### extract non-multicollinearity variables by VIF 
-def feature_engineering_XbyVIF(X_train, num_variables):
-    vif = pd.DataFrame()
-    vif['VIF_Factor'] = [variance_inflation_factor(X_train.values, i) 
-                         for i in range(X_train.shape[1])]
-    vif['Feature'] = X_train.columns
-    X_colname_vif = vif.sort_values(by='VIF_Factor', ascending=True)['Feature'][:num_variables].values
-    return X_colname_vif
-# X_colname_vif = feature_engineering_XbyVIF(X_train_femm, 10)
-# X_colname_vif
 
 
 ### Evaluation of 1 pair of set
@@ -253,6 +196,38 @@ def evaluation_trte(Y_real_tr, Y_pred_tr, Y_real_te, Y_pred_te, graph_on=False):
 
 
 ### Error analysis
+def stationarity_adf_test(Y_Data, Target_name):
+    if len(Target_name) == 0:
+        Stationarity_adf = pd.Series(sm.tsa.stattools.adfuller(Y_Data)[0:4],
+                                     index=['Test Statistics', 'p-value', 'Used Lag', 'Used Observations'])
+        for key, value in sm.tsa.stattools.adfuller(Y_Data)[4].items():
+            Stationarity_adf['Critical Value(%s)'%key] = value
+            Stationarity_adf['Maximum Information Criteria'] = sm.tsa.stattools.adfuller(Y_Data)[5]
+            Stationarity_adf = pd.DataFrame(Stationarity_adf, columns=['Stationarity_adf'])
+    else:
+        Stationarity_adf = pd.Series(sm.tsa.stattools.adfuller(Y_Data[Target_name])[0:4],
+                                     index=['Test Statistics', 'p-value', 'Used Lag', 'Used Observations'])
+        for key, value in sm.tsa.stattools.adfuller(Y_Data[Target_name])[4].items():
+            Stationarity_adf['Critical Value(%s)'%key] = value
+            Stationarity_adf['Maximum Information Criteria'] = sm.tsa.stattools.adfuller(Y_Data[Target_name])[5]
+            Stationarity_adf = pd.DataFrame(Stationarity_adf, columns=['Stationarity_adf'])
+    return Stationarity_adf
+
+def stationarity_kpss_test(Y_Data, Target_name):
+    if len(Target_name) == 0:
+        Stationarity_kpss = pd.Series(sm.tsa.stattools.kpss(Y_Data)[0:3],
+                                      index=['Test Statistics', 'p-value', 'Used Lag'])
+        for key, value in sm.tsa.stattools.kpss(Y_Data)[3].items():
+            Stationarity_kpss['Critical Value(%s)'%key] = value
+            Stationarity_kpss = pd.DataFrame(Stationarity_kpss, columns=['Stationarity_kpss'])
+    else:
+        Stationarity_kpss = pd.Series(sm.tsa.stattools.kpss(Y_Data[Target_name])[0:3],
+                                      index=['Test Statistics', 'p-value', 'Used Lag'])
+        for key, value in sm.tsa.stattools.kpss(Y_Data[Target_name])[3].items():
+            Stationarity_kpss['Critical Value(%s)'%key] = value
+            Stationarity_kpss = pd.DataFrame(Stationarity_kpss, columns=['Stationarity_kpss'])
+    return Stationarity_kpss
+
 def error_analysis(Y_Data, Target_name, X_Data, graph_on=False):
     for x in Target_name:
         Target_name = x
@@ -282,17 +257,13 @@ def error_analysis(Y_Data, Target_name, X_Data, graph_on=False):
         # Autocorrelation Analysis
         figure, axes = plt.subplots(2,1,figsize=(12,5))
         sm.tsa.graphics.plot_acf(Y_Data[Target_name], lags=100, use_vlines=True, ax=axes[0])
-        sm.tsa.graphics.plot_pacf(Y_Data[Target_name], lags=100, use_vlines=True, ax=axes[1]) 
+        sm.tsa.graphics.plot_pacf(Y_Data[Target_name], lags=100, use_vlines=True, ax=axes[1])
 
     ##### Error Analysis(Statistics)
     # Checking Stationarity
     # Null Hypothesis: The Time-series is non-stationalry
-    Stationarity = pd.Series(sm.tsa.stattools.adfuller(Y_Data[Target_name])[0:4],
-                             index=['Test Statistics', 'p-value', 'Used Lag', 'Used Observations'])
-    for key, value in sm.tsa.stattools.adfuller(Y_Data[Target_name])[4].items():
-        Stationarity['Critical Value(%s)'%key] = value
-        Stationarity['Maximum Information Criteria'] = sm.tsa.stattools.adfuller(Y_Data[Target_name])[5]
-        Stationarity = pd.DataFrame(Stationarity, columns=['Stationarity'])
+    Stationarity_adf = stationarity_adf_test(Y_Data, Target_name)
+    Stationarity_kpss = stationarity_kpss_test(Y_Data, Target_name)
 
     # Checking of Normality
     # Null Hypothesis: The residuals are normally distributed
@@ -309,8 +280,9 @@ def error_analysis(Y_Data, Target_name, X_Data, graph_on=False):
     # Null Hypothesis: Error terms are homoscedastic
     Heteroscedasticity = pd.DataFrame([sm.stats.diagnostic.het_goldfeldquandt(Y_Data[Target_name], X_Data.values, alternative='two-sided')],
                                       index=['Heteroscedasticity'], columns=['Test Statistics', 'p-value', 'Alternative']).T
-    Score = pd.concat([Stationarity, Normality, Autocorrelation, Heteroscedasticity], join='outer', axis=1)
+    Score = pd.concat([Stationarity_adf, Stationarity_kpss, Normality, Autocorrelation, Heteroscedasticity], join='outer', axis=1)
     index_new = ['Test Statistics', 'p-value', 'Alternative', 'Used Lag', 'Used Observations',
                  'Critical Value(1%)', 'Critical Value(5%)', 'Critical Value(10%)', 'Maximum Information Criteria']
     Score.reindex(index_new)
+    return Score
 # error_analysis(Resid_tr_reg1[1:], ['Error'], X_train, graph_on=True)
