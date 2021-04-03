@@ -267,7 +267,9 @@ def evaluation(Y_real, Y_pred, graph_on=False):
     if loss_length != 0:
         Y_real = Y_real[loss_length:]
     if graph_on == True:
-        pd.concat([Y_real, pd.DataFrame(Y_pred, index=Y_real.index, columns=['prediction'])], axis=1).plot(kind='line', figsize=(20,6),
+        pred_concat=pd.DataFrame(Y_pred, index=Y_real.index)
+        pred_concat.columns=['prediction']
+        pd.concat([Y_real,pred_concat], axis=1).plot(kind='line', figsize=(20,6),
                                                                                                            xlim=(Y_real.index.min(),Y_real.index.max()),
                                                                                                            linewidth=3, fontsize=20)
         plt.title('Time Series of Target', fontsize=20)
@@ -277,7 +279,9 @@ def evaluation(Y_real, Y_pred, graph_on=False):
     MSE = ((Y_real.values.flatten() - Y_pred)**2).mean()
     MAPE = (abs(Y_real.values.flatten() - Y_pred)/Y_real.values.flatten()*100).mean()
     Score = pd.DataFrame([MAE, MSE, MAPE], index=['MAE', 'MSE', 'MAPE'], columns=['Score']).T
-    Residual = pd.DataFrame(Y_real.values.flatten() - Y_pred, index=Y_real.index, columns=['Error'])
+    Residual = pd.DataFrame(Y_real.values.flatten() - Y_pred, index=Y_real.index)
+    Residual.columns=['Error']
+    
     return Score, Residual
 # Score_tr, Residual_tr = evaluation(Y_train, pred_tr_reg1, graph_on=True)
 
